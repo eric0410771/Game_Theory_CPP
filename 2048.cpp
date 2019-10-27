@@ -15,13 +15,13 @@
 #include "episode.h"
 #include "statistic.h"
 #include <stdio.h>
-
+#include<vector>
 int main(int argc, const char* argv[]) {
 	std::cout << "Thress-Demo: ";
 	std::copy(argv, argv + argc, std::ostream_iterator<const char*>(std::cout, " "));
 	std::cout << std::endl << std::endl;
 
-	size_t total = 1000, block = 0, limit = 0;
+	size_t total = 5000, block = 0, limit = 0;
 	std::string play_args, evil_args;
 	std::string load, save;
 	bool summary = false;
@@ -55,18 +55,24 @@ int main(int argc, const char* argv[]) {
 		summary |= stat.is_finished();
 	}
 
-	player play(play_args);
+	weight_agent play(play_args);
 	rndenv evil(evil_args);
 	action move;
 	int last_slide;
 	action_op player_move;
+	action_reward action_result;
 	while (!stat.is_finished()) {
 		play.open_episode("~:" + evil.name());
 		evil.open_episode(play.name() + ":~");
 
+		std::vector<std::vector<int>> state_index;
+		std::vector<std::vector<int>> after_state_index;
+		std::vector<int> rewards;
+
 		stat.open_episode(play.name() + ":" + evil.name());
 		episode& game = stat.back();
 		last_slide = -1;
+		std::vector<int> state;
 		while (true) {
 			agent& who = game.take_turns(play, evil);
 			if(who.role().compare("player") == 0){
@@ -78,14 +84,22 @@ int main(int argc, const char* argv[]) {
 
 				move = who.take_action(game.state(),last_slide);
 			}
-			if (game.apply_action(move) != true) {
-				break;
+			action_result = game.apply_action(move);
+			if (who.role().compare("player") == 0){
+				if(state.size() == 0){
+					state = game.state().features();
+				}else{
+					state_index.push_back(state);
+					after_state_index.push_back(game.state().features());
+					rewards.push_back(action_result.reward);
+					state = game.state().features();
+				}
 			}
-			if (who.check_for_win(game.state())) break;
+			if (not action_result.legal_action or who.check_for_win(game.state())) break;
 		}
 		agent& win = game.last_turns(play, evil);
 		stat.close_episode(win.name());
-
+		play.update_weights(state_index, rewards, after_state_index);
 		play.close_episode(win.name());
 		evil.close_episode(win.name());
 	}

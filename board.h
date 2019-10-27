@@ -14,6 +14,7 @@
  *
  */
 class board {
+	static const std::vector<std::vector<int>> feature_indices;
 public:
 	typedef uint32_t cell;
 	typedef std::array<cell, 4> row;
@@ -66,7 +67,19 @@ public:
 			index_to_score[i] = 3 * index_to_score[i - 1];
 		}
 	}
-
+	std::vector<int> features(){
+		std::vector<int> indices;
+		for(int i = 0 ;i<feature_indices.size();i++){
+			int index = 0;
+			for(int j = 0;j<feature_indices[i].size();j++){
+				index *= 16;
+				index += (*this)(feature_indices[i][j]);
+				
+			}
+			indices.push_back(index);
+		}
+		return indices;
+	}
 	/**
 	 * place a tile (index value) to the specific position (1-d form index)
 	 * return 0 if the action is valid, or -1 if not
@@ -96,7 +109,6 @@ public:
 		board prev = *this;
 		reward score = 0;
 		for (int r = 0; r < 4; r++) {
-			auto& row = tile[r];
 			std::vector<int> append_row(tile[r].begin(), tile[r].end());
 			append_row.push_back(0);
 			bool merge = false;
@@ -182,6 +194,7 @@ public:
 	void rotate_right() { transpose(); reflect_horizontal(); } // clockwise
 	void rotate_left() { transpose(); reflect_vertical(); } // counterclockwise
 	void reverse() { reflect_horizontal(); reflect_vertical(); }
+	
 public:
 	friend std::ostream& operator <<(std::ostream& out, const board& b) {
 		out << "+------------------------+" << std::endl;
@@ -198,3 +211,4 @@ private:
 	grid tile;
 	data attr;
 };
+const std::vector<std::vector<int>> board::feature_indices({{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15},{0,4,8,12},{1,5,9,13},{2,6,10,14},{3,7,11,15}});

@@ -7,12 +7,15 @@
 #include <algorithm>
 #include "board.h"
 #include "action.h"
+#include "weight.h"
 
 struct action_op{
 	action s;
 	int op;
 };
+
 typedef action_op action_op;
+
 class agent {
 public:
 	agent(const std::string& args = "") {
@@ -179,6 +182,134 @@ public:
 		return action();
 	}
 
-private:
+protected:
 	std::array<int, 4> opcode;
+};
+
+class weight_agent: public player{
+public:
+	weight_agent(const std::string& args =  "", int num_feature = 8): player(args), num_feature(num_feature){
+		alpha = 1.0 / 32.0;
+		if (meta.find("init") != meta.end()){
+			init_weights(meta["init"]);
+		}
+		if (meta.find("load") != meta.end()){
+			load_weights(meta["load"]);
+		}
+	}
+	virtual ~weight_agent(){
+		if (meta.find("save")!=meta.end()){
+			save_weights(meta["save"]);
+		}
+	}
+
+protected:
+	virtual void init_weights(const std::string& info){
+		for (int i = 0 ;i<num_feature; i++){
+			net.emplace_back(65536);
+		}
+	}
+
+	virtual void load_weights(const std::string& path){
+		std::ifstream in(path, std::ios::in | std::ios::binary);
+		if(!in.is_open()) std::exit(-1);
+
+		uint32_t size;
+		in.read(reinterpret_cast<char*>(&size),sizeof(size));
+		net.resize(size);
+		for (weight& w : net) in >> w;	
+		in.close();
+	}
+	virtual void save_weights(const std:: string& path){
+		std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
+		if(!out.is_open()) std::exit(-1);
+		uint32_t size;
+		out.write(reinterpret_cast<char*>(&size),sizeof(size));
+		for (weight& w : net) out << w;
+		out.close();			
+	}
+	/*
+	virtual action_op take_action2(const board& before) {
+                std::shuffle(opcode.begin(), opcode.end(), engine);
+                action_op output;
+                for (int op : opcode) {
+                        board::reward reward = board(before).slide(op);
+                        action s = action::slide(op);
+                        output.s = s;
+                        output.op = op;
+                        if (reward != -1) return output;
+                }
+                output.s = action();
+                output.op = -1;
+                return output;
+        }*/
+	virtual action_op take_action2(const board& before){
+		int rewards[] = {0,0,0,0};
+		float a_value[] = {0.0,0.0,0.0,0.0};
+		int max = 0;
+		int index = 0;
+		bool first = true;
+		action_op output;
+		for(int i = 0 ;i <4;i++){
+			board tmp = board(before);
+			board::reward reward = tmp.slide(opcode[i]);
+			
+			rewards[i] = reward;
+			a_value[i] = sum(tmp.features());
+			if(reward!=-1){
+				if(first){
+					max = rewards[i]+a_value[i];
+					index = i;
+					first = false;
+				}else{
+					if(max < rewards[i]+a_value[i]){
+						max = rewards[i]+a_value[i];
+						index = i;
+					}
+				}
+			}
+		}
+		output.s = action::slide(opcode[index]);
+		output.op = opcode[index];
+		return output;
+	}
+public:
+	void update_weights(std::vector<std::vector<int>> state_index, std::vector<int> rewards, std::vector<std::vector<int>> after_state_index){
+		/*float delta = alpha * (0 - sum(state_index[state_index.size()-1]));
+		for (int j = 0 ; j<state_index[state_index.size()-1].size() ; j++){
+			net[j][state_index[state_index.size()-1][j]] += delta;
+		
+		}
+		for(int i = state_index.size() - 2; i >= 0; i--){
+			delta = alpha * (rewards[i] + sum(after_state_index[i]) - sum(state_index[i]));
+			for(int j = 0 ; j<state_index[i].size() ; j++){
+				net[j][state_index[i][j]] += delta;
+			}
+		}
+		*/
+		float delta = 0;
+		for (int i = 0 ;i<state_index.size();i++){
+			if(rewards[i] != -1){
+				delta = alpha*(rewards[i] + sum(after_state_index[i]) - sum(state_index[i]));
+			}
+			else{
+				delta = alpha*(0 - sum(state_index[i]));
+			}
+			for(int j = 0;j<state_index[i].size();j++){
+				net[j][state_index[i][j]] += delta;
+			}
+		}
+	}
+	float sum(std::vector<int> weight_index){
+		float advantage_value = 0;
+		for(int i = 0 ;i<weight_index.size();i++){
+			advantage_value += net[i][weight_index[i]];
+		}
+		return advantage_value;
+	}
+protected:
+	std::vector<weight> net;
+private:
+	int num_feature;
+	float alpha;
 };

@@ -10,6 +10,13 @@
 #include "action.h"
 #include "agent.h"
 
+struct action_reward{
+	bool legal_action;
+	int reward;
+};
+
+typedef action_reward action_reward;
+
 class statistic;
 
 class episode {
@@ -28,12 +35,19 @@ public:
 	void close_episode(const std::string& tag) {
 		ep_close = { tag, millisec() };
 	}
-	bool apply_action(action move) {
+	action_reward apply_action(action move) {
+		action_reward output;
 		board::reward reward = move.apply(state());
-		if (reward == -1) return false;
+		if (reward == -1) {
+			output.legal_action = false;
+			output.reward = -1;
+			return output;
+		}
+		output.legal_action = true;
+		output.reward = reward;
 		ep_moves.emplace_back(move, reward, millisec() - ep_time);
 		ep_score += reward;
-		return true;
+		return output;
 	}
 	agent& take_turns(agent& play, agent& evil) {
 		ep_time = millisec();
